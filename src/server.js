@@ -13,6 +13,10 @@ const JWT_SECRET = process.env.JWT_SECRET || "clave_secreta_para_desarrollo";
 app.use(cors());
 app.use(express.json());
 
+function esObjetoJson(valor) {
+  return valor !== null && typeof valor === "object" && !Array.isArray(valor);
+}
+
 app.get("/", (req, res) => {
   res.json({
     mensaje: "API de Registro e Inicio de Sesión funcionando correctamente",
@@ -23,24 +27,33 @@ app.get("/", (req, res) => {
 // Registro de usuario.
 app.post("/api/auth/register", async (req, res) => {
   try {
+    if (!esObjetoJson(req.body)) {
+      return res.status(400).json({
+        error: "El cuerpo de la solicitud debe ser un objeto JSON."
+      });
+    }
+
     const { usuario, contraseña } = req.body;
 
     // Validación de campos obligatorios.
-    if (!usuario || !contraseña) {
+    if (typeof usuario !== "string" || typeof contraseña !== "string" ||
+        !usuario.trim() || !contraseña) {
       return res.status(400).json({
-        error: "El usuario y la contraseña son obligatorios."
+        error: "El usuario y la contraseña son obligatorios y deben ser texto."
       });
     }
 
-    if (usuario.length < 3) {
+    const nombreUsuario = usuario.trim();
+
+    if (nombreUsuario.length < 3 || nombreUsuario.length > 30) {
       return res.status(400).json({
-        error: "El usuario debe tener mínimo 3 caracteres."
+        error: "El usuario debe tener entre 3 y 30 caracteres."
       });
     }
 
-    if (contraseña.length < 6) {
+    if (contraseña.length < 6 || Buffer.byteLength(contraseña, "utf8") > 72) {
       return res.status(400).json({
-        error: "La contraseña debe tener mínimo 6 caracteres."
+        error: "La contraseña debe tener mínimo 6 caracteres y máximo 72 bytes."
       });
     }
 
@@ -48,7 +61,7 @@ app.post("/api/auth/register", async (req, res) => {
 
     // Se evita registrar dos veces el mismo usuario.
     const existe = users.some(
-      (user) => user.usuario.toLowerCase() === usuario.toLowerCase()
+      (user) => user.usuario.toLowerCase() === nombreUsuario.toLowerCase()
     );
 
     if (existe) {
@@ -61,8 +74,8 @@ app.post("/api/auth/register", async (req, res) => {
     const contraseñaHash = await bcrypt.hash(contraseña, 10);
 
     const nuevoUsuario = {
-      id: users.length + 1,
-      usuario,
+      id: users.reduce((ultimoId, user) => Math.max(ultimoId, user.id), 0) + 1,
+      usuario: nombreUsuario,
       contraseñaHash
     };
 
@@ -84,17 +97,31 @@ app.post("/api/auth/register", async (req, res) => {
 // Inicio de sesión.
 app.post("/api/auth/login", async (req, res) => {
   try {
+    if (!esObjetoJson(req.body)) {
+      return res.status(400).json({
+        error: "El cuerpo de la solicitud debe ser un objeto JSON."
+      });
+    }
+
     const { usuario, contraseña } = req.body;
 
-    if (!usuario || !contraseña) {
+    if (typeof usuario !== "string" || typeof contraseña !== "string" ||
+        !usuario.trim() || !contraseña) {
       return res.status(400).json({
-        error: "El usuario y la contraseña son obligatorios."
+        error: "El usuario y la contraseña son obligatorios y deben ser texto."
+      });
+    }
+
+    if (Buffer.byteLength(contraseña, "utf8") > 72) {
+      return res.status(400).json({
+        error: "La contraseña no puede superar 72 bytes."
       });
     }
 
     const users = getUsers();
+    const nombreUsuario = usuario.trim();
     const user = users.find(
-      (item) => item.usuario.toLowerCase() === usuario.toLowerCase()
+      (item) => item.usuario.toLowerCase() === nombreUsuario.toLowerCase()
     );
 
     // Se devuelve un mensaje de error si el usuario no existe.
@@ -140,13 +167,14 @@ app.post("/api/auth/login", async (req, res) => {
 app.get("/api/auth/perfil", (req, res) => {
   const encabezado = req.headers.authorization;
 
-  if (!encabezado || !encabezado.startsWith("Bearer ")) {
+  const coincidencia = encabezado && encabezado.match(/^Bearer\s+(\S+)$/i);
+  if (!coincidencia) {
     return res.status(401).json({
       error: "Token de autenticación requerido."
     });
   }
 
-  const token = encabezado.split(" ")[1];
+  const token = coincidencia[1];
 
   try {
     const datos = jwt.verify(token, JWT_SECRET);
@@ -165,6 +193,29 @@ app.get("/api/auth/perfil", (req, res) => {
 app.use((req, res) => {
   res.status(404).json({
     error: "Ruta no encontrada."
+  });
+});
+
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  if (error instanceof SyntaxError && error.type === "entity.parse.failed") {
+    return res.status(400).json({
+      error: "El cuerpo de la solicitud contiene JSON inválido."
+    });
+  }
+
+  if (error.type === "entity.too.large") {
+    return res.status(413).json({
+      error: "El cuerpo de la solicitud excede el tamaño permitido."
+    });
+  }
+
+  console.error(error);
+  return res.status(500).json({
+    error: "Error interno del servidor."
   });
 });
 

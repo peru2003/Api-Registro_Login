@@ -21,24 +21,20 @@ Diseñar y codificar un servicio web para registro y autenticación de usuarios,
 
 ### Diseño de la solución
 
-La API está construida con Node.js y Express. El registro recibe usuario y contraseña, valida los datos, genera un hash de la contraseña con bcrypt y almacena el usuario en un archivo JSON.
+La API está construida con Node.js y Express. El registro recibe usuario y contraseña, valida los datos, genera un hash de la contraseña con bcrypt y almacena el usuario en un archivo JSON. El inicio de sesión compara el hash y, si las credenciales son correctas, entrega un token JWT. El servicio de perfil verifica ese token antes de autorizar la respuesta.
 
-El inicio de sesión busca el usuario y compara la contraseña recibida con el hash almacenado. Si la comparación es correcta, se genera un token JWT y se responde con el mensaje:
-
-**Autenticación satisfactoria.**
-
-Si las credenciales son incorrectas, se responde:
-
-**Error en la autenticación.**
+El contrato de las rutas, parámetros, cuerpos, respuestas y códigos HTTP se especifica en [`openapi.yaml`](./openapi.yaml). La especificación puede importarse en Swagger Editor o Postman.
 
 ### Endpoints
 
-| Método | Ruta | Función |
-|---|---|---|
-| GET | / | Verificar funcionamiento de la API |
-| POST | /api/auth/register | Registrar usuario |
-| POST | /api/auth/login | Autenticar usuario |
-| GET | /api/auth/perfil | Consultar recurso protegido |
+| Método | Ruta | Función | Respuestas principales |
+|---|---|---|---|
+| GET | `/` | Verificar funcionamiento de la API | `200` |
+| POST | `/api/auth/register` | Registrar usuario | `201`, `400`, `409`, `413`, `500` |
+| POST | `/api/auth/login` | Autenticar usuario y emitir JWT | `200`, `400`, `401`, `413`, `500` |
+| GET | `/api/auth/perfil` | Consultar recurso protegido con `Bearer JWT` | `200`, `401` |
+
+Todas las solicitudes de escritura usan `Content-Type: application/json`. Los errores se devuelven como un objeto JSON con la propiedad `error`. En registro el usuario debe tener entre 3 y 30 caracteres; la contraseña requiere al menos 6 caracteres y no puede superar 72 bytes UTF-8.
 
 ### Ejemplo de registro
 
@@ -62,7 +58,9 @@ Resultado esperado:
 
 ```json
 {
-  "mensaje": "Autenticación satisfactoria."
+  "mensaje": "Autenticación satisfactoria.",
+  "usuario": "abraham",
+  "token": "<jwt>"
 }
 ```
 
@@ -111,7 +109,8 @@ Para la evidencia de funcionamiento se recomienda utilizar Postman o Thunder Cli
 5. Inicio de sesión con contraseña incorrecta.
 6. Acceso al perfil con token.
 7. Acceso al perfil sin token.
+8. Envío de JSON malformado y de campos con tipos no válidos.
 
 ### Conclusión
 
-El servicio desarrollado cumple con el caso planteado, ya que permite registrar usuarios y realizar un proceso de autenticación mediante usuario y contraseña. Además, incorpora validaciones, hash de contraseñas, token JWT, comentarios en el código y una estructura preparada para trabajar con Git y GitHub. La solución puede ampliarse posteriormente mediante una base de datos, documentación Swagger/OpenAPI y mecanismos adicionales de seguridad.
+El servicio desarrollado cumple con el caso planteado, ya que permite registrar usuarios y realizar un proceso de autenticación mediante usuario y contraseña. Además, incorpora validaciones, hash de contraseñas, token JWT, especificación OpenAPI y una estructura preparada para trabajar con Git y GitHub. La solución puede ampliarse posteriormente mediante una base de datos y mecanismos adicionales de seguridad.
